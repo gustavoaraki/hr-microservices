@@ -1,0 +1,156 @@
+version: "3.7"
+
+services:
+  hr-config-server:
+    image: hr-config-server:v1
+    container_name: hr-config-server
+    environment:
+      GITHUB_USER: ${GITHUB_USER}
+      GITHUB_PASS: ${GITHUB_PASS}
+    ports:
+      - 8888:8888
+    depends_on:
+      - keycloak
+    networks:
+      - hr-network
+
+  hr-gateway:
+    image: hr-gateway:v1
+    container_name: hr-gateway
+    restart: on-failure
+    ports:
+      - 8765:8765
+    depends_on:
+      - hr-config-server
+      - hr-eureka-server
+    networks:
+      - hr-network
+
+  hr-eureka-server:
+    image: hr-eureka-server:v1
+    container_name: hr-eureka-server
+    ports:
+      - 8761:8761
+    networks:
+      - hr-network
+
+  hr-worker-1:
+    image: hr-worker:v1
+    container_name: hr-worker-1
+    restart: on-failure
+    ports:
+      - "8000"
+    depends_on:
+      - hr-config-server
+      - hr-eureka-server
+      - hr-gateway
+    networks:
+      - hr-network
+
+  hr-worker-2:
+    image: hr-worker:v1
+    container_name: hr-worker-2
+    restart: on-failure
+    ports:
+      - "8001"
+    depends_on:
+      - hr-config-server
+      - hr-eureka-server
+      - hr-gateway
+    networks:
+      - hr-network
+
+  hr-user:
+    image: hr-user:v1
+    container_name: hr-user
+    restart: on-failure
+    ports:
+      - "8002"
+    depends_on:
+      - db_user
+      - keycloak
+    networks:
+      - hr-network
+
+  hr-payroll:
+    image: hr-payroll:v1
+    container_name: hr-payroll
+    restart: on-failure
+    ports:
+      - "8003"
+    depends_on:
+      - hr-config-server
+      - hr-eureka-server
+      - hr-gateway
+    networks:
+      - hr-network
+
+  db_worker:
+    image: postgres:9.6
+    container_name: db_worker
+    restart: always
+    environment:
+      POSTGRES_DB: db_hr_worker
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: root
+    ports:
+      - 5433:5432
+    volumes:
+      - ./data/worker:/var/lib/postgresql/data
+    networks:
+      - hr-network
+
+  db_user:
+    image: postgres:9.6
+    container_name: db_user
+    restart: always
+    environment:
+      POSTGRES_DB: keycloak
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: root
+    ports:
+      - 5432:5432
+    volumes:
+      - ./data/user:/var/lib/postgresql/data
+    networks:
+      - hr-network
+
+  keycloak:
+    image: jboss/keycloak:13.0.1
+    container_name: keycloak
+    volumes:
+      - ./tmp/realm-export.json:/tmp/realm-export.json
+    restart: always
+    environment:
+      DB_VENDOR: POSTGRES
+      DB_ADDR: db_user
+      DB_DATABASE: keycloak
+      DB_USER: postgres
+      DB_SCHEMA: public
+      DB_PASSWORD: root
+      KEYCLOAK_USER: admin
+      KEYCLOAK_PASSWORD: K3yclo@k
+      KEYCLOAK_IMPORT: /tmp/realm-export.json
+    command: -Dkeycloak.profile.feature.upload_scripts=enabled
+    ports:
+      - 8080:8080
+    depends_on:
+      - db_user
+    networks:
+      - hr-network
+
+  pgadmin:
+    image: dpage/pgadmin4
+    container_name: pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: "admin@arakicorp.com"
+      PGADMIN_DEFAULT_PASSWORD: "admin"
+    ports:
+      - "16543:80"
+    depends_on:
+      - db_user
+      - db_worker
+    networks:
+      - hr-network
+networks:
+  hr-network:
